@@ -69,7 +69,7 @@ pub const CompilationContext = struct {
 
     pub fn init(allocator_: std.mem.Allocator, full_name: []const u8, platform: Platform) !CompilationContext {
         const mlir_registry = mlir.Registry.init() catch unreachable;
-        inline for (.{ "func", "stablehlo" }) |d| {
+        inline for (.{ "func", "stablehlo", "sdy" }) |d| {
             mlir.DialectHandle.fromString(d).insertDialect(mlir_registry);
         }
         var mlir_ctx = mlir.Context.initWithRegistry(mlir_registry, false) catch unreachable;
@@ -166,6 +166,10 @@ pub const CompilationContext = struct {
         // Run in a dedicated thread because compilation relies on `threadlocal`.
         const f = try asynk.callBlocking(CompilationContext.emitMlir, .{ self, func, &tensor_args, CompilationContext.EmitMlirOpts{ .name = "main", .kind = .main } });
         const module = self._module;
+        const loc = self._mlir_ctx.location(@src()).named(self._mlir_ctx, "sdy");
+        const values: []mlir.Value = &[_]mlir.Value{};
+
+        module.getBody().appendOperation(dialect.sdy.dummy(self._mlir_ctx, values, loc));
         module.getBody().appendOperation(f.mlir_fn);
 
         const sharding = self._platform.sharding();

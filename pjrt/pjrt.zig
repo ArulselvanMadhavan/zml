@@ -566,11 +566,11 @@ pub const Executable = opaque {
         }) catch unreachable;
     }
 
-    pub fn getCostAnalysis(self: *const Executable, api: *const Api) GetCostAnalysisError![]*const NamedValue {
+    pub fn getCostAnalysis(self: *const Executable, api: *const Api) GetCostAnalysisError![]NamedValue {
         const ret = try api.call(.PJRT_Executable_GetCostAnalysis, .{
             .executable = self.inner(),
         });
-        const values: [*]*const NamedValue = @ptrCast(ret.properties);
+        const values: [*]NamedValue = @constCast(@ptrCast(ret.properties));
         return values[0..ret.num_properties];
     }
 

@@ -1,8 +1,9 @@
 const std = @import("std");
-const zml = @import("zml");
-const stdx = @import("stdx");
+
 const asynk = @import("async");
+const stdx = @import("stdx");
 const flags = stdx.flags;
+const zml = @import("zml");
 
 // set log level to debug to print the generated IR
 pub const std_options: std.Options = .{
@@ -11,7 +12,10 @@ pub const std_options: std.Options = .{
 };
 
 pub fn benchmark(a: zml.Tensor, b: zml.Tensor) zml.Tensor {
-    return a.withSharding(.{.k}).dot(b.withSharding(.{.k}), .{.k}).withSharding(.{.m});
+    const out = a.withSharding(.{.k}).dot(b.withSharding(.{.k}), .{.k});
+    const b_t = b.transpose(.{ .n, .k });
+    return out.withSharding(.{.n}).dot(b_t.withSharding(.{.n}), .{.n});
+    //.withSharding(.{.m});
 }
 
 pub fn main() !void {
@@ -36,9 +40,8 @@ pub fn asyncMain() !void {
     defer context.deinit();
 
     // Auto-select platform
-    const platform = context.autoPlatform(.{}).withCompilationOptions(.{
-        .sharding_enabled = true,
-    });
+    const platform = context.autoPlatform(.{}).withCompilationOptions(.{ .sharding_enabled = true, .xla_dump_to = "/zml/examples/benchmark/xladump" });
+
     context.printAvailablePlatforms(platform);
 
     var args = std.process.args();
@@ -58,9 +61,20 @@ pub fn asyncMain() !void {
     // Wait for compilation to finish
     const executable = try compilation.awaitt();
     defer executable.deinit();
+
     const compilation_elapsed = timer.lap() / std.time.ns_per_ms;
     std.debug.print("-" ** 160 ++ "\n\n", .{});
     std.debug.print("✅ Compiled Benchmark model in {d} milliseconds! \n", .{compilation_elapsed});
+
+    const pjrt_exe = executable.inner.exe;
+    const raw_exec = try pjrt_exe.getExecutable(platform.pjrt_api);
+    const ca = try raw_exec.getCostAnalysis(platform.pjrt_api);
+    const stdout = std.io.getStdOut();
+    var w = stdout.writer();
+    for (ca) |elem| {
+        try elem.format("", .{}, w);
+        try w.print("\n", .{});
+    }
 
     var rng = std.Random.DefaultPrng.init(0);
     const random = rng.random();
